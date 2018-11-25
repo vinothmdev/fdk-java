@@ -9,6 +9,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,13 +28,13 @@ public class JacksonCoercionTest {
 
         MethodWrapper method = new DefaultMethodWrapper(JacksonCoercionTest.class, "testMethod");
         FunctionRuntimeContext frc = new FunctionRuntimeContext(method, new HashMap<>());
-        FunctionInvocationContext invocationContext = new FunctionInvocationContext(frc);
+        FunctionInvocationContext invocationContext = new FunctionInvocationContext(frc,new ReadOnceInputEvent(new ByteArrayInputStream(new byte[0]),Headers.emptyHeaders(),"callID",Instant.now()));
 
         Map<String, String> headers = new HashMap<>();
         headers.put("content-type", "application/json");
 
         ByteArrayInputStream body = new ByteArrayInputStream("[{\"name\":\"Spot\",\"age\":6},{\"name\":\"Jason\",\"age\":16}]".getBytes());
-        InputEvent inputEvent = new ReadOnceInputEvent("", "", "", "testMethod", body, Headers.fromMap(headers), new QueryParametersImpl());
+        InputEvent inputEvent = new ReadOnceInputEvent( body, Headers.fromMap(headers),"call",Instant.now());
 
         Optional<Object> object = jc.tryCoerceParam(invocationContext, 0, inputEvent, method);
 
@@ -49,13 +50,13 @@ public class JacksonCoercionTest {
 
         MethodWrapper method = new DefaultMethodWrapper(JacksonCoercionTest.class, "testMethod");
         FunctionRuntimeContext frc = new FunctionRuntimeContext(method, new HashMap<>());
-        FunctionInvocationContext invocationContext = new FunctionInvocationContext(frc);
+        FunctionInvocationContext invocationContext = new FunctionInvocationContext(frc,new ReadOnceInputEvent(new ByteArrayInputStream(new byte[0]),Headers.emptyHeaders(),"callID",Instant.now()));
 
         Map<String, String> headers = new HashMap<>();
         headers.put("content-type", "application/json");
 
         ByteArrayInputStream body = new ByteArrayInputStream("INVALID JSON".getBytes());
-        InputEvent inputEvent = new ReadOnceInputEvent("", "", "", "testMethod", body, Headers.fromMap(headers), new QueryParametersImpl());
+        InputEvent inputEvent = new ReadOnceInputEvent( body, Headers.fromMap(headers), "call",Instant.now());
 
         boolean causedExpectedError;
         try {

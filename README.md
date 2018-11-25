@@ -61,7 +61,7 @@ runtime: java
 cmd: com.example.fn.HelloFunction::handleRequest
 ```
 
-The `cmd` field determines which method is called when your funciton is
+The `cmd` field determines which method is called when your function is
 invoked. In the generated Function, the `func.yaml` references
 `com.example.fn.HelloFunction::handleRequest`. Your functions will likely live
 in different classes, and this field should always point to the method to
@@ -298,6 +298,10 @@ If you want to set up the state of your function object before the function is
 invoked, and to use external configuration variables that you can set up with
 the Fn tool, have a look at the [Function
 Configuration](docs/FunctionConfiguration.md) tutorial.
+
+### Handling HTTP requests
+
+If your function serves an HTTP trigger you may want to access HTTP details such as request or response headers or the HTTP status , check out [Accessing HTTP Information From Functions](docs/HTTPGatewayFunctions.md).
 
 ### Input and output bindings
 
