@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.fnproject.fn.integrationtest;
 
 import org.apache.commons.io.FileUtils;
@@ -112,7 +128,6 @@ public class IntegrationTestRule implements TestRule {
 
         boolean isSuccess() {
             return success;
-
         }
 
         public String getStdout() {
@@ -123,7 +138,9 @@ public class IntegrationTestRule implements TestRule {
             return stderr;
         }
 
-
+        public String toString() {
+            return "CmdResult: cmd=" + cmd + ", success=" + success + ", stdout=" + stdout + ", stderr=" + stderr;
+        }
     }
 
     public class TestContext {
@@ -151,7 +168,12 @@ public class IntegrationTestRule implements TestRule {
         public CmdResult runFnWithInput(String input, String... args) throws Exception {
             CmdResult res = runFnWithInputAllowError(input, args);
 
-            Assertions.assertThat(res.isSuccess()).withFailMessage("Expected command '" + res.cmd + "' to return 0").isTrue();
+            if (res.isSuccess() == false) {
+                System.err.println("FN FAIL!");
+                System.err.println(res.toString());
+            }
+
+            Assertions.assertThat(res.isSuccess()).withFailMessage("Expected command '" + res.cmd + "' to return 0." + "FN FAIL: " + res).isTrue();
             return res;
         }
 
@@ -184,10 +206,8 @@ public class IntegrationTestRule implements TestRule {
 
             Process p = pb.start();
 
-
             p.getOutputStream().write(input.getBytes());
             p.getOutputStream().close();
-
 
             CompletableFuture<String> stderr = new CompletableFuture<>();
 

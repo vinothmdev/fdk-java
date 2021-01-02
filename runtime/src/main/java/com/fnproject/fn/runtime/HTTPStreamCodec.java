@@ -1,5 +1,40 @@
+/*
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.fnproject.fn.runtime;
 
+
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.core.io.CharTypes;
 import com.fnproject.fn.api.Headers;
@@ -11,7 +46,15 @@ import com.fnproject.fn.runtime.exception.FunctionIOException;
 import com.fnproject.fn.runtime.exception.FunctionInitializationException;
 import com.fnproject.fn.runtime.ntv.UnixServerSocket;
 import com.fnproject.fn.runtime.ntv.UnixSocket;
-import org.apache.http.*;
+import org.apache.http.Header;
+import org.apache.http.HttpEntityEnclosingRequest;
+import org.apache.http.HttpException;
+import org.apache.http.HttpRequest;
+import org.apache.http.HttpRequestInterceptor;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpResponseInterceptor;
+import org.apache.http.HttpVersion;
+import org.apache.http.ParseException;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
@@ -23,16 +66,6 @@ import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpService;
 import org.apache.http.protocol.ImmutableHttpProcessor;
 import org.apache.http.protocol.UriHttpRequestHandlerMapper;
-
-import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Fn HTTP Stream over Unix domain sockets  codec
@@ -53,6 +86,7 @@ public final class HTTPStreamCodec implements EventCodec, Closeable {
     private static final Set<String> stripInputHeaders;
     private static final Set<String> stripOutputHeaders;
     private final Map<String, String> env;
+    private final String fdkVersion;
     private final AtomicBoolean stopping = new AtomicBoolean(false);
     private final File socketFile;
     private final CompletableFuture<Boolean> stopped = new CompletableFuture<>();
@@ -75,9 +109,10 @@ public final class HTTPStreamCodec implements EventCodec, Closeable {
         hout.add("Content-Length");
         hout.add("Transfer-Encoding");
         hout.add("Connection");
+        hout.add("Fn-Fdk-Version");
+
         stripOutputHeaders = Collections.unmodifiableSet(hout);
     }
-
 
 
     private String randomString() {
@@ -88,19 +123,22 @@ public final class HTTPStreamCodec implements EventCodec, Closeable {
         StringBuilder buffer = new StringBuilder(targetStringLength);
         for (int i = 0; i < targetStringLength; i++) {
             int randomLimitedInt = leftLimit + (int)
-              (random.nextFloat() * (rightLimit - leftLimit + 1));
+                (random.nextFloat() * (rightLimit - leftLimit + 1));
             buffer.append((char) randomLimitedInt);
         }
         return buffer.toString();
     }
 
+
     /**
      * Construct a new HTTPStreamCodec based on the environment
      *
-     * @param env an env map
+     * @param env        an env map
+     * @param fdkVersion the version to report to the runtime
      */
-    HTTPStreamCodec(Map<String, String> env) {
+    HTTPStreamCodec(Map<String, String> env, String fdkVersion) {
         this.env = Objects.requireNonNull(env, "env");
+        this.fdkVersion = Objects.requireNonNull(fdkVersion, "fdkVersion");
         String listenerAddress = getRequiredEnv(FN_LISTENER);
 
         if (!listenerAddress.startsWith("unix:/")) {
@@ -167,7 +205,7 @@ public final class HTTPStreamCodec implements EventCodec, Closeable {
                 evt = readEvent(request);
             } catch (FunctionInputHandlingException e) {
                 response.setStatusCode(500);
-                response.setEntity(new StringEntity(jsonError("Invalid input for function",  e.getMessage()), ContentType.APPLICATION_JSON));
+                response.setEntity(new StringEntity(jsonError("Invalid input for function", e.getMessage()), ContentType.APPLICATION_JSON));
                 return;
             }
 
@@ -177,7 +215,7 @@ public final class HTTPStreamCodec implements EventCodec, Closeable {
                 outEvt = h.handle(evt);
             } catch (Exception e) {
                 response.setStatusCode(500);
-                response.setEntity(new StringEntity(jsonError("Unhandled internal error in FDK",e.getMessage()), ContentType.APPLICATION_JSON));
+                response.setEntity(new StringEntity(jsonError("Unhandled internal error in FDK", e.getMessage()), ContentType.APPLICATION_JSON));
                 return;
             }
 
@@ -186,7 +224,7 @@ public final class HTTPStreamCodec implements EventCodec, Closeable {
             } catch (Exception e) {
                 // TODO strange edge cases might appear with headers where the response is half written here
                 response.setStatusCode(500);
-                response.setEntity(new StringEntity(jsonError("Unhandled internal error while writing FDK response",e.getMessage()), ContentType.APPLICATION_JSON));
+                response.setEntity(new StringEntity(jsonError("Unhandled internal error while writing FDK response", e.getMessage()), ContentType.APPLICATION_JSON));
             }
         }
         ));
@@ -306,11 +344,11 @@ public final class HTTPStreamCodec implements EventCodec, Closeable {
     private void writeEvent(OutputEvent evt, HttpResponse response) {
 
         evt.getHeaders().asMap()
-          .entrySet()
-          .stream()
-          .filter(e -> !stripOutputHeaders.contains(e.getKey()))
-          .flatMap(e -> e.getValue().stream().map((v) -> new BasicHeader(e.getKey(), v)))
-          .forEachOrdered(response::addHeader);
+            .entrySet()
+            .stream()
+            .filter(e -> !stripOutputHeaders.contains(e.getKey()))
+            .flatMap(e -> e.getValue().stream().map((v) -> new BasicHeader(e.getKey(), v)))
+            .forEachOrdered(response::addHeader);
 
         ContentType contentType = evt.getContentType().map(c -> {
             try {
@@ -321,6 +359,8 @@ public final class HTTPStreamCodec implements EventCodec, Closeable {
         }).orElse(ContentType.DEFAULT_BINARY);
 
         response.setHeader("Content-Type", contentType.toString());
+        response.setHeader("Fn-Fdk-Version", fdkVersion);
+
         response.setStatusLine(new BasicStatusLine(HttpVersion.HTTP_1_1, evt.getStatus().getCode(), evt.getStatus().name()));
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         // TODO remove output buffering here - possibly change OutputEvent contract to support providing an InputStream?

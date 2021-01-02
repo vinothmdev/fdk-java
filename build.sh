@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+#
+# Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 
 set -e
 set -x
@@ -26,29 +41,29 @@ mvn  -B  deploy -DaltDeploymentRepository=localStagingDir::default::file://${REP
 
 (
   cd images/build
-  ./docker-build.sh -t fnproject/fn-java-fdk-build:${BUILD_VERSION} .
+  ./docker-build.sh --no-cache -t fnproject/fn-java-fdk-build:${BUILD_VERSION} .
 )
 
 (
   cd images/build
-  ./docker-build.sh -f Dockerfile-jdk9 -t fnproject/fn-java-fdk-build:jdk9-${BUILD_VERSION} .
+  ./docker-build.sh --no-cache -f Dockerfile-jdk11 -t fnproject/fn-java-fdk-build:jdk11-${BUILD_VERSION} .
 )
 
 (
    cd runtime
-   docker build -t fnproject/fn-java-fdk:${BUILD_VERSION}  -f ../images/runtime/Dockerfile .
+   docker build --no-cache -t fnproject/fn-java-fdk:${BUILD_VERSION}  -f ../images/runtime/Dockerfile .
 )
 
 (
    cd runtime
-   docker build -f ../images/runtime/Dockerfile-jdk9 -t fnproject/fn-java-fdk:jdk9-${BUILD_VERSION} .
+   docker build --no-cache -f ../images/runtime/Dockerfile-jre11 -t fnproject/fn-java-fdk:jre11-${BUILD_VERSION} .
 )
 
 (
+    workdir=$(pwd)/runtime
     cd images/build-native
-    ./docker-build.sh
+    ./docker-build.sh ${workdir}
 )
-
 
 (
     cd images/init-native

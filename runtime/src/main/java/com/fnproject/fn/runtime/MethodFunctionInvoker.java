@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.fnproject.fn.runtime;
 
 
@@ -17,6 +33,26 @@ import java.util.Optional;
  */
 public class MethodFunctionInvoker implements FunctionInvoker {
 
+    /*
+    * If enabled, print the logging framing content
+    */
+    public void logFramer(FunctionRuntimeContext rctx, InputEvent evt) {
+        String framer = rctx.getConfigurationByKey("FN_LOGFRAME_NAME").orElse("");
+
+        if (framer != "") {
+            String valueSrc = rctx.getConfigurationByKey("FN_LOGFRAME_HDR").orElse("");
+
+            if (valueSrc != "") {
+                String id = evt.getHeaders().get(valueSrc).orElse("");
+                if (id != "") {
+                    System.out.println("\n" + framer + "=" + id + "\n");
+                    System.err.println("\n" + framer + "=" + id + "\n");
+                }
+            }
+        }
+    }
+
+
     /**
      * Invoke the function wrapped by this loader
      *
@@ -32,6 +68,8 @@ public class MethodFunctionInvoker implements FunctionInvoker {
         Object[] userFunctionParams = coerceParameters(ctx, method, evt);
 
         Object rawResult;
+
+        logFramer(runtimeContext, evt);
 
         try {
             rawResult = method.getTargetMethod().invoke(ctx.getRuntimeContext().getInvokeInstance().orElse(null), userFunctionParams);
